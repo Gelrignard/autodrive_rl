@@ -12,3 +12,6 @@
 .ssh
 .vscode-server
 wandb
+.bash_history
+*/.bash_history
+**/.bash_history
