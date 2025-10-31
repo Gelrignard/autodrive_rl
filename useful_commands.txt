@@ -1,0 +1,9 @@
+ros2 launch autodrive_roboracer bringup_graphics.launch.py
+
+
+
+headless:
+
+docker run --name autodrive_roboracer_sim --rm -it --entrypoint /bin/bash --network=host --ipc=host -v /tmp/.X11-unix:/tmp.X11-umix:rw --env DISPLAY --privileged --gpus all autodriveecosystem/autodrive_roboracer_sim:2025-icra-compete
+
+xvfb-run ./AutoDRIVE\ Simulator.x86_64 -ip 127.0.0.1 -port 4567
