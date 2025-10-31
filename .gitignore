@@ -1,0 +1,14 @@
+.bashrc
+.bashhistory
+.cache
+.colcon
+.dotnet
+.gnupg
+.local
+.netrc
+.nv
+.profile
+.ros
+.ssh
+.vscode-server
+wandb
