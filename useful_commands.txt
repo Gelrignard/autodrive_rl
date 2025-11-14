@@ -11,4 +11,8 @@ docker run --name autodrive_roboracer_sim --rm -it --entrypoint /bin/bash --netw
 
 xvfb-run ./AutoDRIVE\ Simulator.x86_64 -ip 127.0.0.1 -port 4567
 
-./AutoDRIVE\ Simulator.x86_64 -batchmode -nographics -ip 127.0.0.1 -port 4567
+./AutoDRIVE\ Simulator.x86_64 -batchmode -nographics -ip 127.0.0.1
+
+python3 generate_centerline.py sparse_waypoints.txt track_centerline.json
+
+python3 catkin_ws/src/ppo_train.py --centerline catkin_ws/src/track_centerline.json

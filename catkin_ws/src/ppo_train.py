@@ -18,7 +18,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import math
 import wandb
 from wandb.integration.sb3 import WandbCallback
-
+import json
+import os
 
 def quaternion_to_euler(x, y, z, w):
     """Convert quaternion to euler angles (roll, pitch, yaw)"""
@@ -44,7 +45,7 @@ class RoboracerEnv(gym.Env, Node):
     
     metadata = {'render.modes': ['human']}
     
-    def __init__(self, max_steps=1000):
+    def __init__(self, max_steps=1000, centerline_file=None):
         # Initialize ROS 2 node first
         if not rclpy.ok():
             rclpy.init()
@@ -55,6 +56,12 @@ class RoboracerEnv(gym.Env, Node):
         
         self.max_steps = max_steps
         self.current_step = 0
+        
+        # Load centerline waypoints
+        self.centerline_waypoints = None
+        if centerline_file:
+            self.centerline_waypoints = self._load_centerline(centerline_file)
+            self.get_logger().info(f'Loaded {len(self.centerline_waypoints)} centerline waypoints')
         
         # Observation space: 
         # - 36 LiDAR readings (sparse)
@@ -244,6 +251,49 @@ class RoboracerEnv(gym.Env, Node):
         
         return sparse_ranges.astype(np.float32)
     
+    # centerline loading function
+    def _load_centerline(self, filepath):
+        """Load centerline waypoints from JSON file"""
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+                waypoints = []
+                for wp in data['waypoints']:
+                    waypoints.append(np.array([wp['x'], wp['y']]))
+                return np.array(waypoints)
+        except Exception as e:
+            self.get_logger().warn(f'Failed to load centerline: {e}')
+            return None
+    
+    def _get_cross_track_error(self, position):
+        """Calculate perpendicular distance to closest centerline segment"""
+        if self.centerline_waypoints is None or position is None:
+            return None
+        
+        pos_2d = np.array(position[:2])
+        min_distance = float('inf')
+        
+        # Check distance to each centerline segment
+        for i in range(len(self.centerline_waypoints)):
+            p1 = self.centerline_waypoints[i]
+            p2 = self.centerline_waypoints[(i + 1) % len(self.centerline_waypoints)]
+            
+            # Calculate perpendicular distance to line segment
+            segment = p2 - p1
+            segment_length = np.linalg.norm(segment)
+            
+            if segment_length < 1e-6:
+                continue
+            
+            # Project point onto line segment
+            t = np.clip(np.dot(pos_2d - p1, segment) / (segment_length ** 2), 0, 1)
+            projection = p1 + t * segment
+            distance = np.linalg.norm(pos_2d - projection)
+            
+            min_distance = min(min_distance, distance)
+        
+        return min_distance
+
     def _get_observation(self):
         """Construct observation vector"""
         # LiDAR (36 readings)
@@ -319,13 +369,13 @@ class RoboracerEnv(gym.Env, Node):
         
         # Speed reward: encourage forward movement
         speed = self.data['speed'] if self.data['speed'] is not None else 0.0
-        reward += speed * 0.1
+        reward += speed * 1.0 # reward increased
         
         # Collision penalty
         if self.data['collision_count'] is not None:
             collision_delta = self.data['collision_count'] - self.prev_data['collision_count']
             if collision_delta > 0:
-                reward -= 10.0 * collision_delta
+                reward -= 5.0 * collision_delta # penalty decreased
         
         # Lap completion reward
         if self.data['lap_count'] is not None:
@@ -341,6 +391,20 @@ class RoboracerEnv(gym.Env, Node):
             distance = np.linalg.norm(current_pos - prev_pos)
             reward += distance * 1.0
         
+        # centerline tracking reward
+        if self.data['ips'] is not None and self.centerline_waypoints is not None:
+            cross_track_error = self._get_cross_track_error(self.data['ips'])
+            
+            if cross_track_error is not None:
+                # Exponential reward: closer to center = higher reward
+                centerline_reward = np.exp(-cross_track_error / 0.5) * 2.0
+                reward += centerline_reward
+                
+                # Strong penalty if too far from centerline (> 2.0 meters)
+                if cross_track_error > 2.0:
+                    reward -= (cross_track_error - 2.0) * 5.0
+        
+
         # Penalty for getting too close to obstacles
         lidar = self._get_sparse_lidar(36)
         min_distance = np.min(lidar)
@@ -384,8 +448,18 @@ class RoboracerEnv(gym.Env, Node):
         self.get_logger().info('Sent reset command: False')
         
         # Wait for reset to complete and system to stabilize
-        time.sleep(1.5)
+        time.sleep(1)
         
+        # Give initial forward impulse: straight ahead with small throttle
+        initial_steering = Float32()
+        initial_steering.data = 0.0  # Straight
+        self.steering_cmd_pub.publish(initial_steering)
+        
+        initial_throttle = Float32()
+        initial_throttle.data = 0.3  # Small forward speed
+        self.throttle_cmd_pub.publish(initial_throttle)
+        
+
         # Reset internal state
         self.current_step = 0
         self.prev_data = {
@@ -525,7 +599,8 @@ def train_ppo(total_timesteps=100000,
               save_dir='./ppo_roboracer/',
               project_name='roboracer-ppo',
               run_name=None,
-              use_wandb=True):
+              use_wandb=True,
+              centerline_file='catkin_ws/src/track_centerline.json'):
     """Train PPO agent with wandb logging"""
     
     # Initialize wandb
@@ -555,7 +630,7 @@ def train_ppo(total_timesteps=100000,
         )
     
     # Create environment
-    env = RoboracerEnv(max_steps=1000)
+    env = RoboracerEnv(max_steps=1000, centerline_file=centerline_file)
     
     # Check environment
     print("Checking environment...")
@@ -738,11 +813,11 @@ if __name__ == '__main__':
     import sys
     import argparse
 
-    eval = True
+    eval = False
     parser = argparse.ArgumentParser(description='Train or evaluate PPO agent for Roboracer')
     parser.add_argument('--eval', action='store_true',
                        help='Evaluation mode (default: training mode)')
-    parser.add_argument('--timesteps', type=int, default=100000, 
+    parser.add_argument('--timesteps', type=int, default=10000, 
                        help='Total training timesteps')
     parser.add_argument('--save-dir', type=str, default='./ppo_roboracer/',
                        help='Directory to save/load models')
@@ -756,6 +831,8 @@ if __name__ == '__main__':
                        help='W&B run name')
     parser.add_argument('--no-wandb', action='store_true',
                        help='Disable W&B logging (training only)')
+    parser.add_argument('--centerline', type=str, default='track_centerline.json',
+                    help='Path to centerline JSON file')
     
     args = parser.parse_args()
     
@@ -786,7 +863,8 @@ if __name__ == '__main__':
                 save_dir=args.save_dir,
                 project_name=args.project,
                 run_name=args.run_name,
-                use_wandb=not args.no_wandb
+                use_wandb=not args.no_wandb,
+                centerline_file=args.centerline
             )
     except KeyboardInterrupt:
         print("\nInterrupted by user")
