@@ -397,7 +397,7 @@ class RoboracerEnv(gym.Env, Node):
             
             if cross_track_error is not None:
                 # Exponential reward: closer to center = higher reward
-                centerline_reward = np.exp(-cross_track_error / 0.5) * 2.0
+                centerline_reward = np.exp(-cross_track_error / 0.5) * 10.0
                 reward += centerline_reward
                 
                 # Strong penalty if too far from centerline (> 2.0 meters)
