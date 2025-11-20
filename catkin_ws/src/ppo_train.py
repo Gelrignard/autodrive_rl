@@ -45,7 +45,7 @@ class RoboracerEnv(gym.Env, Node):
     
     metadata = {'render.modes': ['human']}
     
-    def __init__(self, max_steps=1000, centerline_file=None):
+    def __init__(self, max_steps=10000, centerline_file=None):
         # Initialize ROS 2 node first
         if not rclpy.ok():
             rclpy.init()
@@ -817,7 +817,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train or evaluate PPO agent for Roboracer')
     parser.add_argument('--eval', action='store_true',
                        help='Evaluation mode (default: training mode)')
-    parser.add_argument('--timesteps', type=int, default=10000, 
+    parser.add_argument('--timesteps', type=int, default=5000000, 
                        help='Total training timesteps')
     parser.add_argument('--save-dir', type=str, default='./ppo_roboracer/',
                        help='Directory to save/load models')

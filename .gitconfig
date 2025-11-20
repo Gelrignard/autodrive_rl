@@ -7,4 +7,4 @@
 	smudge = git-lfs smudge -- %f
 	process = git-lfs filter-process
 [credential]
-	helper = "!f() { /root/.vscode-server/bin/7d842fb85a0275a4a8e4d7e040d2625abbf7f084/node /tmp/vscode-remote-containers-d207afc2-9058-4678-9588-783f984f5df8.js git-credential-helper $*; }; f"
+	helper = "!f() { /root/.vscode-server/bin/7d842fb85a0275a4a8e4d7e040d2625abbf7f084/node /tmp/vscode-remote-containers-5ece9c31-32c7-49c9-af5a-f328dc4abb38.js git-credential-helper $*; }; f"
