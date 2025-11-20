@@ -45,7 +45,7 @@ class RoboracerEnv(gym.Env, Node):
     
     metadata = {'render.modes': ['human']}
     
-    def __init__(self, max_steps=10000, centerline_file=None):
+    def __init__(self, max_steps=60000, centerline_file=None):
         # Initialize ROS 2 node first
         if not rclpy.ok():
             rclpy.init()
@@ -495,7 +495,7 @@ class RoboracerEnv(gym.Env, Node):
         self.throttle_cmd_pub.publish(throttle_msg)
         
         # Wait for simulator to process
-        time.sleep(0.05)  # 20 Hz control rate
+        time.sleep(0.01)  # 100 Hz control rate
         
         # Update previous state
         if self.data['collision_count'] is not None:
@@ -620,7 +620,7 @@ def train_ppo(total_timesteps=100000,
                 'gae_lambda': 0.95,
                 'clip_range': 0.2,
                 'ent_coef': 0.01,
-                'max_steps_per_episode': 1000,
+                'max_steps_per_episode': 60000,
                 'observation_space': 47,
                 'action_space': 2,
             },
@@ -817,7 +817,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train or evaluate PPO agent for Roboracer')
     parser.add_argument('--eval', action='store_true',
                        help='Evaluation mode (default: training mode)')
-    parser.add_argument('--timesteps', type=int, default=5000000, 
+    parser.add_argument('--timesteps', type=int, default=26000000, 
                        help='Total training timesteps')
     parser.add_argument('--save-dir', type=str, default='./ppo_roboracer/',
                        help='Directory to save/load models')
